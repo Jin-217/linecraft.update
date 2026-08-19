@@ -1,0 +1,6 @@
+{
+  "name": "linecraft",
+  "description": "A professional mathematical function visualizer with infinite zoom, definite integration and area shading, intersection detection, and derivative analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
