@@ -5723,100 +5723,263 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className={`p-3 rounded-xl border space-y-3 text-xs ${
+                <div className={`p-3 rounded-xl border space-y-3.5 text-xs ${
                   isDarkMode ? 'bg-[#121524] border-slate-800' : 'bg-slate-50 border-slate-200'
                 }`}>
-                  <div className={`p-2 rounded border text-center font-mono text-xs ${
+                  {/* Transformed Equation Preview Display */}
+                  <div className={`p-2.5 rounded-lg border text-center font-mono space-y-1 ${
                     isDarkMode 
                       ? 'bg-[#0c0e1a] border-indigo-500/30 text-indigo-300' 
                       : 'bg-indigo-50 border-indigo-200 text-indigo-800 font-semibold'
                   }`}>
-                    g(x) = {transformA !== 1 ? `${transformA} * ` : ''}f({transformB !== 1 ? `${transformB}*` : ''}(x {transformC >= 0 ? `- ${transformC}` : `+ ${Math.abs(transformC)}`})) {transformD >= 0 ? `+ ${transformD}` : `- ${Math.abs(transformD)}`}
-                  </div>
-
-                  <div className="space-y-2.5 pt-1">
-                    <div>
-                      <div className={`flex justify-between text-[10px] mb-1 ${
-                        isDarkMode ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        <span>Vertical Scale (a)</span>
-                        <span className={`font-mono font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{transformA}</span>
-                      </div>
-                      <input 
-                        type="range" min="-5" max="5" step="0.5"
-                        value={transformA} onChange={(e) => setTransformA(parseFloat(e.target.value))}
-                        className="w-full accent-indigo-500"
-                      />
+                    <div className="text-[10px] uppercase font-sans tracking-wider text-slate-400 font-semibold">
+                      Transformed Model: g(x) = a · f(b(x - c)) + d
                     </div>
-
-                    <div>
-                      <div className={`flex justify-between text-[10px] mb-1 ${
-                        isDarkMode ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        <span>Horizontal Compression (b)</span>
-                        <span className={`font-mono font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{transformB}</span>
-                      </div>
-                      <input 
-                        type="range" min="-5" max="5" step="0.5"
-                        value={transformB} onChange={(e) => setTransformB(parseFloat(e.target.value))}
-                        className="w-full accent-indigo-500"
-                      />
-                    </div>
-
-                    <div>
-                      <div className={`flex justify-between text-[10px] mb-1 ${
-                        isDarkMode ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        <span>Horizontal Shift (c)</span>
-                        <span className={`font-mono font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{transformC}</span>
-                      </div>
-                      <input 
-                        type="range" min="-10" max="10" step="0.5"
-                        value={transformC} onChange={(e) => setTransformC(parseFloat(e.target.value))}
-                        className="w-full accent-indigo-500"
-                      />
-                    </div>
-
-                    <div>
-                      <div className={`flex justify-between text-[10px] mb-1 ${
-                        isDarkMode ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        <span>Vertical Shift (d)</span>
-                        <span className={`font-mono font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{transformD}</span>
-                      </div>
-                      <input 
-                        type="range" min="-10" max="10" step="0.5"
-                        value={transformD} onChange={(e) => setTransformD(parseFloat(e.target.value))}
-                        className="w-full accent-indigo-500"
-                      />
+                    <div className="text-xs font-bold text-indigo-400 dark:text-indigo-300 break-all">
+                      g(x) = {transformA !== 1 ? `${transformA} * ` : ''}f({transformB !== 1 ? `${transformB}*` : ''}(x {transformC >= 0 ? `- ${transformC}` : `+ ${Math.abs(transformC)}`})) {transformD >= 0 ? `+ ${transformD}` : `- ${Math.abs(transformD)}`}
                     </div>
                   </div>
 
+                  {/* Coefficients Configuration (Manual Typed Inputs + Sliders) */}
+                  <div className="space-y-3.5 pt-0.5">
+                    {/* Vertical Scale (a) */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Vertical Scale <span className="font-mono text-indigo-400 font-bold">(a)</span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <input 
+                            type="number" 
+                            step="any"
+                            value={Number.isNaN(transformA) ? '' : transformA}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setTransformA(isNaN(val) ? 0 : val);
+                            }}
+                            className={`w-18 px-2 py-0.5 rounded text-right font-mono font-bold text-xs border outline-none transition-all ${
+                              isDarkMode 
+                                ? 'bg-[#0c0e1a] border-slate-700 focus:border-indigo-500 text-indigo-300' 
+                                : 'bg-white border-slate-300 focus:border-indigo-500 text-indigo-700'
+                            }`}
+                            placeholder="1"
+                            title="Type exact coefficient for vertical scale a"
+                          />
+                        </div>
+                      </div>
+                      <input 
+                        type="range" 
+                        min={Math.min(-10, Math.floor(transformA))} 
+                        max={Math.max(10, Math.ceil(transformA))} 
+                        step="0.25"
+                        value={transformA} 
+                        onChange={(e) => setTransformA(parseFloat(e.target.value) || 0)}
+                        className="w-full accent-indigo-500 cursor-pointer h-1.5 rounded-lg"
+                      />
+                      <div className="flex items-center gap-1 justify-end">
+                        {[-2, -1, 0.5, 1, 2, 3].map(v => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setTransformA(v)}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-all ${
+                              transformA === v 
+                                ? 'bg-indigo-600 text-white border-indigo-400 font-bold' 
+                                : (isDarkMode ? 'bg-[#0c0e1a] text-slate-400 border-slate-800 hover:text-white' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100')
+                            }`}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Horizontal Compression (b) */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Horizontal Frequency <span className="font-mono text-purple-400 font-bold">(b)</span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <input 
+                            type="number" 
+                            step="any"
+                            value={Number.isNaN(transformB) ? '' : transformB}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setTransformB(isNaN(val) ? 0 : val);
+                            }}
+                            className={`w-18 px-2 py-0.5 rounded text-right font-mono font-bold text-xs border outline-none transition-all ${
+                              isDarkMode 
+                                ? 'bg-[#0c0e1a] border-slate-700 focus:border-purple-500 text-purple-300' 
+                                : 'bg-white border-slate-300 focus:border-purple-500 text-purple-700'
+                            }`}
+                            placeholder="1"
+                            title="Type exact coefficient for horizontal compression b"
+                          />
+                        </div>
+                      </div>
+                      <input 
+                        type="range" 
+                        min={Math.min(-10, Math.floor(transformB))} 
+                        max={Math.max(10, Math.ceil(transformB))} 
+                        step="0.25"
+                        value={transformB} 
+                        onChange={(e) => setTransformB(parseFloat(e.target.value) || 0)}
+                        className="w-full accent-purple-500 cursor-pointer h-1.5 rounded-lg"
+                      />
+                      <div className="flex items-center gap-1 justify-end">
+                        {[-2, -1, 0.5, 1, 2, 3].map(v => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setTransformB(v)}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-all ${
+                              transformB === v 
+                                ? 'bg-purple-600 text-white border-purple-400 font-bold' 
+                                : (isDarkMode ? 'bg-[#0c0e1a] text-slate-400 border-slate-800 hover:text-white' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100')
+                            }`}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Horizontal Shift (c) */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Horizontal Shift <span className="font-mono text-cyan-400 font-bold">(c)</span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <input 
+                            type="number" 
+                            step="any"
+                            value={Number.isNaN(transformC) ? '' : transformC}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setTransformC(isNaN(val) ? 0 : val);
+                            }}
+                            className={`w-18 px-2 py-0.5 rounded text-right font-mono font-bold text-xs border outline-none transition-all ${
+                              isDarkMode 
+                                ? 'bg-[#0c0e1a] border-slate-700 focus:border-cyan-500 text-cyan-300' 
+                                : 'bg-white border-slate-300 focus:border-cyan-500 text-cyan-700'
+                            }`}
+                            placeholder="0"
+                            title="Type exact horizontal shift c (x - c)"
+                          />
+                        </div>
+                      </div>
+                      <input 
+                        type="range" 
+                        min={Math.min(-20, Math.floor(transformC))} 
+                        max={Math.max(20, Math.ceil(transformC))} 
+                        step="0.5"
+                        value={transformC} 
+                        onChange={(e) => setTransformC(parseFloat(e.target.value) || 0)}
+                        className="w-full accent-cyan-500 cursor-pointer h-1.5 rounded-lg"
+                      />
+                      <div className="flex items-center gap-1 justify-end">
+                        {[-5, -2, 0, 2, 5].map(v => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setTransformC(v)}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-all ${
+                              transformC === v 
+                                ? 'bg-cyan-600 text-white border-cyan-400 font-bold' 
+                                : (isDarkMode ? 'bg-[#0c0e1a] text-slate-400 border-slate-800 hover:text-white' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100')
+                            }`}
+                          >
+                            {v >= 0 ? `+${v}` : v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Vertical Shift (d) */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Vertical Shift <span className="font-mono text-emerald-400 font-bold">(d)</span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <input 
+                            type="number" 
+                            step="any"
+                            value={Number.isNaN(transformD) ? '' : transformD}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setTransformD(isNaN(val) ? 0 : val);
+                            }}
+                            className={`w-18 px-2 py-0.5 rounded text-right font-mono font-bold text-xs border outline-none transition-all ${
+                              isDarkMode 
+                                ? 'bg-[#0c0e1a] border-slate-700 focus:border-emerald-500 text-emerald-300' 
+                                : 'bg-white border-slate-300 focus:border-emerald-500 text-emerald-700'
+                            }`}
+                            placeholder="0"
+                            title="Type exact vertical shift d (+ d)"
+                          />
+                        </div>
+                      </div>
+                      <input 
+                        type="range" 
+                        min={Math.min(-20, Math.floor(transformD))} 
+                        max={Math.max(20, Math.ceil(transformD))} 
+                        step="0.5"
+                        value={transformD} 
+                        onChange={(e) => setTransformD(parseFloat(e.target.value) || 0)}
+                        className="w-full accent-emerald-500 cursor-pointer h-1.5 rounded-lg"
+                      />
+                      <div className="flex items-center gap-1 justify-end">
+                        {[-5, -2, 0, 2, 5].map(v => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setTransformD(v)}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-all ${
+                              transformD === v 
+                                ? 'bg-emerald-600 text-white border-emerald-400 font-bold' 
+                                : (isDarkMode ? 'bg-[#0c0e1a] text-slate-400 border-slate-800 hover:text-white' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100')
+                            }`}
+                          >
+                            {v >= 0 ? `+${v}` : v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Shortcut Buttons */}
                   <div className={`grid grid-cols-2 gap-1.5 pt-2 border-t ${
                     isDarkMode ? 'border-slate-800' : 'border-slate-200'
                   }`}>
                     <button 
-                      onClick={() => setTransformA(prev => prev * -1)}
+                      type="button"
+                      onClick={() => setTransformA(prev => Number((prev * -1).toFixed(4)))}
                       className={`p-1.5 rounded text-[10px] border transition-colors ${
                         isDarkMode 
                           ? 'bg-[#0c0e1a] hover:bg-slate-800 text-slate-300 border-slate-800' 
                           : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                       }`}
                     >
-                      Reflect X-Axis
+                      Reflect X-Axis (a × -1)
                     </button>
                     <button 
-                      onClick={() => setTransformB(prev => prev * -1)}
+                      type="button"
+                      onClick={() => setTransformB(prev => Number((prev * -1).toFixed(4)))}
                       className={`p-1.5 rounded text-[10px] border transition-colors ${
                         isDarkMode 
                           ? 'bg-[#0c0e1a] hover:bg-slate-800 text-slate-300 border-slate-800' 
                           : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                       }`}
                     >
-                      Reflect Y-Axis
+                      Reflect Y-Axis (b × -1)
                     </button>
                     <button 
-                      onClick={() => setTransformD(prev => prev + 2)}
+                      type="button"
+                      onClick={() => setTransformD(prev => Number((prev + 2).toFixed(4)))}
                       className={`p-1.5 rounded text-[10px] border transition-colors ${
                         isDarkMode 
                           ? 'bg-[#0c0e1a] hover:bg-slate-800 text-slate-300 border-slate-800' 
@@ -5826,6 +5989,7 @@ export default function App() {
                       Shift Up +2
                     </button>
                     <button 
+                      type="button"
                       onClick={() => { setTransformA(1); setTransformB(1); setTransformC(0); setTransformD(0); }}
                       className={`p-1.5 rounded text-[10px] border transition-colors ${
                         isDarkMode 
@@ -5833,29 +5997,75 @@ export default function App() {
                           : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                       }`}
                     >
-                      Reset Sliders
+                      Reset All (1, 1, 0, 0)
                     </button>
                   </div>
 
-                  <button 
-                    onClick={() => {
-                      const targetFn = functions.find(f => f.id === editingFunctionId) || functions[0];
-                      if (targetFn) {
-                        let base = targetFn.equation;
-                        let innerX = transformC === 0 ? 'x' : transformC > 0 ? `(x - ${transformC})` : `(x + ${Math.abs(transformC)})`;
-                        if (transformB !== 1) innerX = `${transformB}*${innerX}`;
-                        let expr = base.replace(/\bx\b/g, innerX);
-                        if (transformA !== 1) expr = `${transformA} * (${expr})`;
-                        if (transformD !== 0) expr = transformD > 0 ? `${expr} + ${transformD}` : `${expr} - ${Math.abs(transformD)}`;
-                        
-                        updateFunction(targetFn.id, { equation: expr });
-                        showToast(`Updated equation: ${expr}`);
-                      }
-                    }}
-                    className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-lg text-xs shadow-md transition-all active:scale-95"
-                  >
-                    Apply Transformation to Function
-                  </button>
+                  {/* Dual Action Buttons: Apply In-Place or Add as New Function */}
+                  <div className="space-y-2 pt-1">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const targetFn = functions.find(f => f.id === editingFunctionId) || functions[0];
+                        if (targetFn) {
+                          recordHistory();
+                          let base = targetFn.equation;
+                          let innerX = transformC === 0 ? 'x' : transformC > 0 ? `(x - ${transformC})` : `(x + ${Math.abs(transformC)})`;
+                          if (transformB !== 1) innerX = `${transformB}*${innerX}`;
+                          let expr = base.replace(/\bx\b/g, innerX);
+                          if (transformA !== 1) expr = `${transformA} * (${expr})`;
+                          if (transformD !== 0) expr = transformD > 0 ? `${expr} + ${transformD}` : `${expr} - ${Math.abs(transformD)}`;
+                          
+                          updateFunction(targetFn.id, { equation: expr });
+                          showToast(`Applied transformation to ${expr}`);
+                        }
+                      }}
+                      className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold rounded-lg text-xs shadow-md transition-all active:scale-95"
+                    >
+                      Apply In-Place to Selected Curve
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const targetFn = functions.find(f => f.id === editingFunctionId) || functions[0];
+                        if (targetFn) {
+                          recordHistory();
+                          let base = targetFn.equation;
+                          let innerX = transformC === 0 ? 'x' : transformC > 0 ? `(x - ${transformC})` : `(x + ${Math.abs(transformC)})`;
+                          if (transformB !== 1) innerX = `${transformB}*${innerX}`;
+                          let expr = base.replace(/\bx\b/g, innerX);
+                          if (transformA !== 1) expr = `${transformA} * (${expr})`;
+                          if (transformD !== 0) expr = transformD > 0 ? `${expr} + ${transformD}` : `${expr} - ${Math.abs(transformD)}`;
+                          
+                          const nextColor = COLORS[functions.length % COLORS.length];
+                          const newFn: FunctionConfig = {
+                            id: Date.now().toString(),
+                            equation: expr,
+                            color: nextColor,
+                            visible: true,
+                            style: 'dashed',
+                            strokeWidth: 2.5,
+                            showDerivative: false,
+                            showTangent: false,
+                            tangentPoint: 0,
+                            showExtrema: true,
+                            showInverse: false
+                          };
+                          setFunctions(prev => [...prev, newFn]);
+                          setEditingFunctionId(newFn.id);
+                          showToast(`Added transformed curve: ${expr}`);
+                        }
+                      }}
+                      className={`w-full py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all ${
+                        isDarkMode 
+                          ? 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border-indigo-500/30' 
+                          : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                      }`}
+                    >
+                      <Plus size={13} /> Add Transformed Curve as New Function
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
