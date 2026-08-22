@@ -69,7 +69,8 @@ import {
   Compass,
   CircleDot,
   RotateCw,
-  Minus
+  Minus,
+  GripVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -1004,6 +1005,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [integralClickMode, setIntegralClickMode] = useState<'auto' | 'a' | 'b'>('auto');
   const [integralMethodTab, setIntegralMethodTab] = useState<'simpson' | 'trapezoid' | 'midpoint' | 'left' | 'right'>('simpson');
+  const [criticalPointFilter, setCriticalPointFilter] = useState<'all' | 'roots' | 'extrema' | 'inflection' | 'intercept'>('all');
 
   // --- Geometric Drawing & Shapes State ---
   const [drawnShapes, setDrawnShapes] = useState<CustomShape[]>([]);
@@ -1304,6 +1306,62 @@ export default function App() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
+
+  // Dynamic ResizeObserver & animation listener to seamlessly resize the graph canvas on initial load and when sidebar expands/collapses or window changes
+  useEffect(() => {
+    const handleResize = () => {
+      const el = svgRef.current || containerRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const w = Math.round(rect.width || el.clientWidth || 0);
+        const h = Math.round(rect.height || el.clientHeight || 0);
+        if (w > 20 && h > 20) {
+          setCanvasSize(prev => {
+            if (prev.width === w && prev.height === h) return prev;
+            return { width: w, height: h };
+          });
+        }
+      }
+    };
+
+    // Immediate and next-frame execution to ensure initial measurement succeeds right after DOM paint
+    handleResize();
+    const rafId = requestAnimationFrame(handleResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    try {
+      resizeObserver = new ResizeObserver(() => {
+        handleResize();
+      });
+      if (svgRef.current) {
+        resizeObserver.observe(svgRef.current);
+      }
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    window.addEventListener('resize', handleResize);
+
+    // Multi-interval checks during Framer Motion sidebar transition & initial flex layout settlement
+    const timers = [
+      setTimeout(handleResize, 30),
+      setTimeout(handleResize, 80),
+      setTimeout(handleResize, 150),
+      setTimeout(handleResize, 250),
+      setTimeout(handleResize, 400)
+    ];
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (resizeObserver) resizeObserver.disconnect();
+      window.removeEventListener('resize', handleResize);
+      timers.forEach(t => clearTimeout(t));
+    };
+  }, [isSidebarOpen, authLoading, currentUser]);
 
   // --- Math Helpers ---
   const evaluateFunction = (expr: string, x: number): number | null => {
@@ -1479,6 +1537,174 @@ export default function App() {
     return roots;
   };
 
+  const getSecondDerivative = (expr: string, x: number): number | null => {
+    try {
+      const d1 = math.derivative(expr, 'x');
+      const d2 = math.derivative(d1, 'x');
+      let scope: Record<string, any> = { 
+        x, 
+        e: Math.E, 
+        E: Math.E, 
+        pi: Math.PI, 
+        PI: Math.PI,
+        ln: (val: number) => Math.log(val),
+        cbrt: (val: number) => Math.cbrt(val),
+        sqrt: (val: number) => Math.sqrt(val),
+        abs: (val: number) => Math.abs(val),
+        exp: (val: number) => Math.exp(val)
+      };
+      if (angleUnit === 'degrees') {
+        scope = {
+          ...scope,
+          sin: (val: number) => Math.sin((val * Math.PI) / 180),
+          cos: (val: number) => Math.cos((val * Math.PI) / 180),
+          tan: (val: number) => Math.tan((val * Math.PI) / 180),
+        };
+      }
+      const result = d2.evaluate(scope);
+      if (typeof result === 'number' && isFinite(result) && !isNaN(result)) {
+        return result;
+      }
+    } catch {
+      // fallback to numerical differentiation
+    }
+    const h = 1e-4;
+    const fCenter = evaluateFunction(expr, x);
+    const fPlus = evaluateFunction(expr, x + h);
+    const fMinus = evaluateFunction(expr, x - h);
+    if (fCenter !== null && fPlus !== null && fMinus !== null) {
+      const numD2 = (fPlus - 2 * fCenter + fMinus) / (h * h);
+      return isFinite(numD2) && !isNaN(numD2) ? numD2 : null;
+    }
+    return null;
+  };
+
+  const findInflectionPoints = (expr: string, xRange: [number, number]) => {
+    const points: { x: number; y: number; concavityChange: 'up-to-down' | 'down-to-up' }[] = [];
+    const steps = 400;
+    const dx = (xRange[1] - xRange[0]) / steps;
+
+    for (let i = 0; i < steps; i++) {
+      const x1 = xRange[0] + i * dx;
+      const x2 = x1 + dx;
+      const d2_1 = getSecondDerivative(expr, x1);
+      const d2_2 = getSecondDerivative(expr, x2);
+
+      if (d2_1 !== null && d2_2 !== null && isFinite(d2_1) && isFinite(d2_2)) {
+        if (d2_1 * d2_2 < 0 && Math.abs(d2_1 - d2_2) < 200) {
+          let low = x1, high = x2;
+          for (let j = 0; j < 15; j++) {
+            const mid = (low + high) / 2;
+            const d2Mid = getSecondDerivative(expr, mid) || 0;
+            if ((getSecondDerivative(expr, low) || 0) * d2Mid <= 0) {
+              high = mid;
+            } else {
+              low = mid;
+            }
+          }
+          const infX = (low + high) / 2;
+          const infY = evaluateFunction(expr, infX);
+          if (infY !== null && isFinite(infY) && !points.some(p => Math.abs(p.x - infX) < 0.15)) {
+            points.push({
+              x: infX,
+              y: infY,
+              concavityChange: d2_1 > 0 ? 'up-to-down' : 'down-to-up'
+            });
+          }
+        }
+      }
+    }
+    return points;
+  };
+
+  interface CriticalPointItem {
+    id: string;
+    x: number;
+    y: number;
+    type: 'root' | 'local_max' | 'local_min' | 'inflection' | 'y_intercept';
+    title: string;
+    badgeLabel: string;
+    badgeColor: 'emerald' | 'purple' | 'amber' | 'cyan' | 'blue';
+    condition: string;
+    notes: string;
+  }
+
+  const getAllCriticalPoints = (expr: string, xRange: [number, number] = [-20, 20]): CriticalPointItem[] => {
+    const list: CriticalPointItem[] = [];
+
+    // 1. Y-Intercept
+    const yInt = evaluateFunction(expr, 0);
+    if (yInt !== null && isFinite(yInt)) {
+      list.push({
+        id: 'y-int-0',
+        x: 0,
+        y: yInt,
+        type: 'y_intercept',
+        title: 'Y-Intercept',
+        badgeLabel: 'Y-Int',
+        badgeColor: 'blue',
+        condition: 'f(0) = y',
+        notes: `Crosses vertical Y-axis at (0, ${yInt.toFixed(2)})`
+      });
+    }
+
+    // 2. Roots (X-Intercepts)
+    const roots = findRoots(expr, xRange);
+    roots.forEach((r, idx) => {
+      list.push({
+        id: `root-${idx}-${r.toFixed(3)}`,
+        x: r,
+        y: 0,
+        type: 'root',
+        title: 'Root (x-int)',
+        badgeLabel: 'Root',
+        badgeColor: 'emerald',
+        condition: 'f(x) = 0',
+        notes: `Curve zeroes at x = ${r.toFixed(3)}`
+      });
+    });
+
+    // 3. Local Extrema (Minima & Maxima)
+    const extrema = findExtrema(expr, xRange);
+    extrema.forEach((ex, idx) => {
+      const isMax = ex.type === 'max';
+      list.push({
+        id: `extrema-${idx}-${ex.x.toFixed(3)}`,
+        x: ex.x,
+        y: ex.y,
+        type: isMax ? 'local_max' : 'local_min',
+        title: isMax ? 'Local Maximum' : 'Local Minimum',
+        badgeLabel: isMax ? 'Local Max' : 'Local Min',
+        badgeColor: isMax ? 'purple' : 'amber',
+        condition: isMax ? "f'(x)=0, f''(x)<0" : "f'(x)=0, f''(x)>0",
+        notes: isMax 
+          ? `Peak vertex at (${ex.x.toFixed(2)}, ${ex.y.toFixed(2)})` 
+          : `Trough vertex at (${ex.x.toFixed(2)}, ${ex.y.toFixed(2)})`
+      });
+    });
+
+    // 4. Inflection Points
+    const inflections = findInflectionPoints(expr, xRange);
+    inflections.forEach((inf, idx) => {
+      list.push({
+        id: `inflection-${idx}-${inf.x.toFixed(3)}`,
+        x: inf.x,
+        y: inf.y,
+        type: 'inflection',
+        title: 'Inflection Point',
+        badgeLabel: 'Inflection',
+        badgeColor: 'cyan',
+        condition: "f''(x) = 0 (Concavity Shift)",
+        notes: inf.concavityChange === 'up-to-down'
+          ? 'Switches from Concave Up ∪ to Concave Down ∩'
+          : 'Switches from Concave Down ∩ to Concave Up ∪'
+      });
+    });
+
+    // Sort ascending by x coordinate
+    return list.sort((a, b) => a.x - b.x);
+  };
+
   // --- Handlers for Functions Management with History Integration ---
   const handleAddFunction = () => {
     recordHistory();
@@ -1599,6 +1825,57 @@ export default function App() {
     if (editingFunctionId === id) {
       setEditingFunctionId(functions.find(f => f.id !== id)?.id || null);
     }
+  };
+
+  // --- Drag & Drop Reordering State & Handlers ---
+  const [draggedFunctionIndex, setDraggedFunctionIndex] = useState<number | null>(null);
+  const [dragOverFunctionIndex, setDragOverFunctionIndex] = useState<number | null>(null);
+
+  const handleFunctionDragStart = (e: React.DragEvent, index: number) => {
+    e.dataTransfer.setData('text/plain', index.toString());
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedFunctionIndex(index);
+  };
+
+  const handleFunctionDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverFunctionIndex !== index) {
+      setDragOverFunctionIndex(index);
+    }
+  };
+
+  const handleFunctionDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    const sourceIndex = draggedFunctionIndex !== null 
+      ? draggedFunctionIndex 
+      : parseInt(e.dataTransfer.getData('text/plain'), 10);
+
+    if (
+      !isNaN(sourceIndex) && 
+      sourceIndex !== targetIndex && 
+      sourceIndex >= 0 && 
+      sourceIndex < functions.length && 
+      targetIndex >= 0 && 
+      targetIndex < functions.length
+    ) {
+      recordHistory();
+      const updated = [...functions];
+      const [moved] = updated.splice(sourceIndex, 1);
+      updated.splice(targetIndex, 0, moved);
+      setFunctions(updated);
+      
+      const sourceLabel = sourceIndex === 0 ? 'f(x)' : sourceIndex === 1 ? 'g(x)' : `f${sourceIndex + 1}(x)`;
+      const targetLabel = targetIndex === 0 ? 'f(x)' : targetIndex === 1 ? 'g(x)' : `f${targetIndex + 1}(x)`;
+      showToast(`Reordered ${sourceLabel} to position ${targetIndex + 1} (${targetLabel})`);
+    }
+    setDraggedFunctionIndex(null);
+    setDragOverFunctionIndex(null);
+  };
+
+  const handleFunctionDragEnd = () => {
+    setDraggedFunctionIndex(null);
+    setDragOverFunctionIndex(null);
   };
 
   const appendSmartInput = (symbol: string) => {
@@ -1781,12 +2058,31 @@ export default function App() {
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    const width = svgRef.current.clientWidth || 800;
-    const height = svgRef.current.clientHeight || 600;
+    const container = containerRef.current;
+    const svgEl = svgRef.current;
+    const rect = svgEl.getBoundingClientRect();
+    const containerRect = container ? container.getBoundingClientRect() : null;
+
+    const width = Math.max(100, Math.round(
+      (rect.width > 20 ? rect.width : 0) || 
+      (containerRect && containerRect.width > 20 ? containerRect.width : 0) || 
+      (svgEl.clientWidth > 20 ? svgEl.clientWidth : 0) || 
+      (container && container.clientWidth > 20 ? container.clientWidth : 0) || 
+      canvasSize.width || 
+      800
+    ));
+    const height = Math.max(100, Math.round(
+      (rect.height > 20 ? rect.height : 0) || 
+      (containerRect && containerRect.height > 20 ? containerRect.height : 0) || 
+      (svgEl.clientHeight > 20 ? svgEl.clientHeight : 0) || 
+      (container && container.clientHeight > 20 ? container.clientHeight : 0) || 
+      canvasSize.height || 
+      600
+    ));
 
     const margin = { top: 30, right: 30, bottom: 30, left: 30 };
-    const chartWidth = width - margin.left - margin.right;
-    const chartHeight = height - margin.top - margin.bottom;
+    const chartWidth = Math.max(10, width - margin.left - margin.right);
+    const chartHeight = Math.max(10, height - margin.top - margin.bottom);
 
     const g = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
@@ -3289,13 +3585,7 @@ export default function App() {
       }
     });
 
-    const resizeObserver = new ResizeObserver(() => {
-      draw();
-    });
-    resizeObserver.observe(svgRef.current);
-
-    return () => resizeObserver.disconnect();
-  }, [functions, viewportDomain, viewportRange, isGridLocked, placedPins, drawnShapes, drawingPoints, drawingLineMode, drawingSemiOrientation, drawingColor, drawingStrokeWidth, drawingStyle, activeQuickAction, editingFunctionId, activeGraphTool, isDarkMode, gridStyle, showGridLines, showAxisLabels, decimalPrecision, angleUnit, integralClickMode]);
+  }, [functions, viewportDomain, viewportRange, isGridLocked, placedPins, drawnShapes, drawingPoints, drawingLineMode, drawingSemiOrientation, drawingColor, drawingStrokeWidth, drawingStyle, activeQuickAction, editingFunctionId, activeGraphTool, isDarkMode, gridStyle, showGridLines, showAxisLabels, decimalPrecision, angleUnit, integralClickMode, canvasSize, isSidebarOpen]);
 
   // --- Zoom Controls ---
   const handleContinuousZoom = (targetZoomPercent: number) => {
@@ -3739,26 +4029,51 @@ export default function App() {
                   <div className="space-y-3">
                     {functions.map((f, idx) => {
                       const isSelected = editingFunctionId === f.id;
+                      const isDragging = draggedFunctionIndex === idx;
+                      const isDragOver = dragOverFunctionIndex === idx;
+
                       return (
                         <div 
                           key={f.id} 
+                          draggable
+                          onDragStart={(e) => handleFunctionDragStart(e, idx)}
+                          onDragOver={(e) => handleFunctionDragOver(e, idx)}
+                          onDragEnd={handleFunctionDragEnd}
+                          onDrop={(e) => handleFunctionDrop(e, idx)}
                           onClick={() => setEditingFunctionId(f.id)}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                            isSelected 
-                              ? (isDarkMode 
-                                  ? 'bg-[#161a2e] border-indigo-500/50 shadow-md shadow-indigo-500/10' 
-                                  : 'bg-indigo-50/70 border-indigo-400 shadow-sm')
-                              : (isDarkMode 
-                                  ? 'bg-[#121524] border-slate-800/80 hover:border-slate-700/80' 
-                                  : 'bg-slate-50 border-slate-200 hover:border-slate-300 shadow-sm')
+                          className={`p-3 rounded-xl border transition-all cursor-pointer relative select-none ${
+                            isDragging 
+                              ? 'opacity-40 scale-[0.98] border-dashed border-indigo-500 bg-indigo-500/10' 
+                              : isDragOver
+                                ? (isDarkMode 
+                                    ? 'border-indigo-400 bg-indigo-950/40 ring-2 ring-indigo-500/50 shadow-lg' 
+                                    : 'border-indigo-500 bg-indigo-50/80 ring-2 ring-indigo-400/50 shadow-md')
+                                : isSelected 
+                                  ? (isDarkMode 
+                                      ? 'bg-[#161a2e] border-indigo-500/50 shadow-md shadow-indigo-500/10' 
+                                      : 'bg-indigo-50/70 border-indigo-400 shadow-sm')
+                                  : (isDarkMode 
+                                      ? 'bg-[#121524] border-slate-800/80 hover:border-slate-700/80' 
+                                      : 'bg-slate-50 border-slate-200 hover:border-slate-300 shadow-sm')
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              {/* Grip Handle */}
+                              <div 
+                                className={`p-0.5 -ml-1 cursor-grab active:cursor-grabbing shrink-0 transition-colors ${
+                                  isDarkMode ? 'text-slate-500 hover:text-indigo-400' : 'text-slate-400 hover:text-indigo-600'
+                                }`}
+                                title="Drag to reorder active curves"
+                              >
+                                <GripVertical size={13} />
+                              </div>
+
                               <input 
                                 type="color" 
                                 value={f.color}
                                 onChange={(e) => updateFunction(f.id, { color: e.target.value })}
+                                onClick={(e) => e.stopPropagation()}
                                 className="w-4 h-4 rounded-full border-0 cursor-pointer bg-transparent p-0 shrink-0"
                                 title="Change Color"
                               />
@@ -3772,6 +4087,7 @@ export default function App() {
                                 onBlur={handleEquationBlur}
                                 onFocus={() => setEditingFunctionId(f.id)}
                                 onClick={(e) => e.stopPropagation()}
+                                onDragStart={(e) => e.stopPropagation()}
                                 className={`w-full border rounded-lg px-2 py-1 text-xs font-mono outline-none transition-all shadow-inner ${
                                   isDarkMode 
                                     ? 'bg-[#0c0e1a] border-slate-700/80 focus:border-indigo-500 text-slate-100 placeholder-slate-500' 
@@ -4837,11 +5153,44 @@ export default function App() {
                   const activeFn = functions.find(f => f.id === editingFunctionId) || functions[0];
                   if (!activeFn) return <p className="text-xs text-slate-500">No active function selected.</p>;
 
+                  const allCriticalPoints = getAllCriticalPoints(activeFn.equation, [-20, 20]);
+                  const rootsList = allCriticalPoints.filter(p => p.type === 'root');
+                  const extremaList = allCriticalPoints.filter(p => p.type === 'local_max' || p.type === 'local_min');
+                  const inflectionList = allCriticalPoints.filter(p => p.type === 'inflection');
+                  const interceptList = allCriticalPoints.filter(p => p.type === 'y_intercept');
+                  const roots = rootsList.map(r => r.x);
+
+                  const displayedCriticalPoints = allCriticalPoints.filter(p => {
+                    if (criticalPointFilter === 'roots') return p.type === 'root';
+                    if (criticalPointFilter === 'extrema') return p.type === 'local_max' || p.type === 'local_min';
+                    if (criticalPointFilter === 'inflection') return p.type === 'inflection';
+                    if (criticalPointFilter === 'intercept') return p.type === 'y_intercept';
+                    return true;
+                  });
+
                   const yInt = evaluateFunction(activeFn.equation, 0);
-                  const roots = findRoots(activeFn.equation, [-20, 20]);
-                  const extrema = findExtrema(activeFn.equation, [-20, 20]);
                   const evalY = evaluateFunction(activeFn.equation, evalX);
                   const slope = getDerivative(activeFn.equation, evalX);
+
+                  const handleJumpToCoordinate = (x: number, y: number, label: string) => {
+                    const spanX = 8;
+                    const spanY = 8;
+                    setViewportDomain([x - spanX / 2, x + spanX / 2]);
+                    setViewportRange([y - spanY / 2, y + spanY / 2]);
+                    showToast(`Jumped graph view to ${label} at (${x.toFixed(decimalPrecision)}, ${y.toFixed(decimalPrecision)})`);
+                  };
+
+                  const handlePinCoordinate = (x: number, y: number, label: string) => {
+                    recordHistory();
+                    const newPin = {
+                      id: Date.now().toString(),
+                      x: parseFloat(x.toFixed(decimalPrecision)),
+                      y: parseFloat(y.toFixed(decimalPrecision)),
+                      label: `${label}: (${x.toFixed(decimalPrecision)}, ${y.toFixed(decimalPrecision)})`
+                    };
+                    setPlacedPins(prev => [...prev, newPin]);
+                    showToast(`Pinned ${label} (${x.toFixed(decimalPrecision)}, ${y.toFixed(decimalPrecision)}) to graph`);
+                  };
 
                   return (
                     <div className="space-y-4 text-xs font-mono">
@@ -4858,103 +5207,163 @@ export default function App() {
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: activeFn.color }} />
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                          <div>
-                            <span className={`block text-[9px] uppercase ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Y-Intercept</span>
-                            <span className={`font-bold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
-                              {yInt !== null ? `(0, ${yInt.toFixed(2)})` : 'Undefined'}
-                            </span>
+                        <div className="grid grid-cols-4 gap-1.5 text-[10px] pt-1">
+                          <div className={`p-1.5 rounded-lg border ${isDarkMode ? 'bg-[#0c0e1a] border-slate-800' : 'bg-white border-slate-200'}`}>
+                            <span className={`block text-[8px] uppercase font-semibold ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Roots</span>
+                            <span className="text-emerald-500 font-bold text-xs">{rootsList.length}</span>
                           </div>
-                          <div>
-                            <span className={`block text-[9px] uppercase ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Roots Found</span>
-                            <span className="text-emerald-500 font-bold">{roots.length}</span>
+                          <div className={`p-1.5 rounded-lg border ${isDarkMode ? 'bg-[#0c0e1a] border-slate-800' : 'bg-white border-slate-200'}`}>
+                            <span className={`block text-[8px] uppercase font-semibold ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Extrema</span>
+                            <span className="text-purple-400 font-bold text-xs">{extremaList.length}</span>
+                          </div>
+                          <div className={`p-1.5 rounded-lg border ${isDarkMode ? 'bg-[#0c0e1a] border-slate-800' : 'bg-white border-slate-200'}`}>
+                            <span className={`block text-[8px] uppercase font-semibold ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Inflections</span>
+                            <span className="text-cyan-400 font-bold text-xs">{inflectionList.length}</span>
+                          </div>
+                          <div className={`p-1.5 rounded-lg border ${isDarkMode ? 'bg-[#0c0e1a] border-slate-800' : 'bg-white border-slate-200'}`}>
+                            <span className={`block text-[8px] uppercase font-semibold ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Y-Intercept</span>
+                            <span className="text-blue-400 font-bold text-xs">{yInt !== null ? `${yInt.toFixed(1)}` : '—'}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Calculated Roots */}
-                      <div className={`p-3 rounded-xl border space-y-2 ${
+                      {/* Critical Points Master Explorer */}
+                      <div className={`p-3 rounded-xl border space-y-3 ${
                         isDarkMode ? 'bg-[#121524] border-slate-800' : 'bg-slate-50 border-slate-200'
                       }`}>
-                        <h4 className={`text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${
-                          isDarkMode ? 'text-slate-400' : 'text-slate-600'
-                        }`}>
-                          <span>Calculated Roots (x-intercepts)</span>
-                          <span className="text-emerald-500 text-[9px]">{roots.length} found</span>
-                        </h4>
-                        {roots.length > 0 ? (
-                          <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                            {roots.map((r, idx) => (
-                              <div key={idx} className={`flex items-center justify-between p-2 rounded-lg border text-[11px] ${
-                                isDarkMode ? 'bg-[#0c0e1a] border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-800'
-                              }`}>
-                                <span>x = {r.toFixed(3)}</span>
-                                <button 
-                                  onClick={() => {
-                                    setViewportDomain([r - 4, r + 4]);
-                                    setViewportRange([-3, 3]);
-                                    showToast(`Focused on root x = ${r.toFixed(2)}`);
-                                  }}
-                                  className={`text-[10px] font-sans flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
-                                    isDarkMode 
-                                      ? 'text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border-indigo-500/20' 
-                                      : 'text-indigo-700 hover:text-indigo-900 bg-indigo-50 border-indigo-200'
-                                  }`}
-                                >
-                                  <Focus size={10} /> Focus
-                                </button>
-                              </div>
-                            ))}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Crosshair size={13} className={isDarkMode ? 'text-indigo-400' : 'text-indigo-600'} />
+                            <h4 className={`text-[10px] font-bold uppercase tracking-wider ${
+                              isDarkMode ? 'text-slate-300' : 'text-slate-700'
+                            }`}>
+                              Critical Points & Features
+                            </h4>
                           </div>
-                        ) : (
-                          <p className="text-[10px] text-slate-500 italic">No real roots detected in [-20, 20]</p>
-                        )}
-                      </div>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-sans font-semibold border ${
+                            isDarkMode ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          }`}>
+                            {allCriticalPoints.length} total
+                          </span>
+                        </div>
 
-                      {/* Calculated Extrema */}
-                      <div className={`p-3 rounded-xl border space-y-2 ${
-                        isDarkMode ? 'bg-[#121524] border-slate-800' : 'bg-slate-50 border-slate-200'
-                      }`}>
-                        <h4 className={`text-[10px] font-bold uppercase tracking-wider ${
-                          isDarkMode ? 'text-slate-400' : 'text-slate-600'
-                        }`}>Extrema Points (Min/Max)</h4>
-                        {extrema.length > 0 ? (
-                          <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                            {extrema.map((ex, idx) => (
-                              <div key={idx} className={`flex items-center justify-between p-2 rounded-lg border text-[11px] ${
-                                isDarkMode ? 'bg-[#0c0e1a] border-slate-800' : 'bg-white border-slate-200'
-                              }`}>
-                                <div>
-                                  <span className={`text-[9px] uppercase px-1 py-0.5 rounded mr-1.5 font-bold ${
-                                    ex.type === 'min' 
-                                      ? (isDarkMode ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-800') 
-                                      : (isDarkMode ? 'bg-purple-500/20 text-purple-300' : 'bg-purple-100 text-purple-800')
-                                  }`}>
-                                    {ex.type}
-                                  </span>
-                                  <span className={isDarkMode ? 'text-slate-300' : 'text-slate-800'}>
-                                    ({ex.x.toFixed(2)}, {ex.y.toFixed(2)})
-                                  </span>
-                                </div>
-                                <button 
-                                  onClick={() => {
-                                    setViewportDomain([ex.x - 4, ex.x + 4]);
-                                    setViewportRange([ex.y - 4, ex.y + 4]);
-                                    showToast(`Focused on ${ex.type} at (${ex.x.toFixed(1)}, ${ex.y.toFixed(1)})`);
-                                  }}
-                                  className={`text-[10px] font-sans flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
+                        {/* Filter Pills */}
+                        <div className="flex flex-wrap gap-1">
+                          {[
+                            { id: 'all', label: `All (${allCriticalPoints.length})` },
+                            { id: 'roots', label: `Roots (${rootsList.length})` },
+                            { id: 'extrema', label: `Extrema (${extremaList.length})` },
+                            { id: 'inflection', label: `Inflections (${inflectionList.length})` },
+                            { id: 'intercept', label: `Y-Int (${interceptList.length})` },
+                          ].map(pill => (
+                            <button
+                              key={pill.id}
+                              onClick={() => setCriticalPointFilter(pill.id as any)}
+                              className={`px-2 py-0.5 rounded-md text-[9px] font-sans font-semibold transition-all border ${
+                                criticalPointFilter === pill.id
+                                  ? (isDarkMode 
+                                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs' 
+                                      : 'bg-indigo-600 text-white border-indigo-600 shadow-xs')
+                                  : (isDarkMode 
+                                      ? 'bg-[#0c0e1a] text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700' 
+                                      : 'bg-white text-slate-600 border-slate-200 hover:text-slate-800 hover:border-slate-300')
+                              }`}
+                            >
+                              {pill.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Critical Points Interactive Card List */}
+                        {displayedCriticalPoints.length > 0 ? (
+                          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                            {displayedCriticalPoints.map((cp) => {
+                              const badgeStyle = 
+                                cp.type === 'root'
+                                  ? (isDarkMode ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-emerald-100 text-emerald-800 border-emerald-300')
+                                  : cp.type === 'local_max'
+                                    ? (isDarkMode ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-purple-100 text-purple-800 border-purple-300')
+                                    : cp.type === 'local_min'
+                                      ? (isDarkMode ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-800 border-amber-300')
+                                      : cp.type === 'inflection'
+                                        ? (isDarkMode ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' : 'bg-cyan-100 text-cyan-800 border-cyan-300')
+                                        : (isDarkMode ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-blue-100 text-blue-800 border-blue-300');
+
+                              return (
+                                <div
+                                  key={cp.id}
+                                  onClick={() => handleJumpToCoordinate(cp.x, cp.y, cp.title)}
+                                  className={`p-2 rounded-lg border transition-all cursor-pointer group ${
                                     isDarkMode 
-                                      ? 'text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border-indigo-500/20' 
-                                      : 'text-indigo-700 hover:text-indigo-900 bg-indigo-50 border-indigo-200'
+                                      ? 'bg-[#0c0e1a] border-slate-800 hover:border-indigo-500/50 hover:bg-[#12162a]' 
+                                      : 'bg-white border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 shadow-xs'
                                   }`}
+                                  title="Click to jump graph view directly to this point"
                                 >
-                                  <Focus size={10} /> Focus
-                                </button>
-                              </div>
-                            ))}
+                                  <div className="flex items-center justify-between gap-1 mb-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                      <span className={`text-[8px] uppercase px-1.5 py-0.5 rounded font-bold border tracking-wider ${badgeStyle}`}>
+                                        {cp.badgeLabel}
+                                      </span>
+                                      <span className={`font-mono font-bold text-[11px] ${
+                                        isDarkMode ? 'text-slate-200 group-hover:text-indigo-300' : 'text-slate-800 group-hover:text-indigo-700'
+                                      }`}>
+                                        ({cp.x.toFixed(decimalPrecision)}, {cp.y.toFixed(decimalPrecision)})
+                                      </span>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handlePinCoordinate(cp.x, cp.y, cp.title);
+                                        }}
+                                        className={`p-1 rounded border transition-colors ${
+                                          isDarkMode 
+                                            ? 'text-slate-400 hover:text-indigo-300 bg-slate-800/60 border-slate-700 hover:bg-slate-700' 
+                                            : 'text-slate-500 hover:text-indigo-700 bg-slate-100 border-slate-200 hover:bg-slate-200'
+                                        }`}
+                                        title="Pin coordinate to graph canvas"
+                                      >
+                                        <MapPin size={11} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleJumpToCoordinate(cp.x, cp.y, cp.title);
+                                        }}
+                                        className={`px-2 py-0.5 rounded text-[9px] font-sans font-semibold flex items-center gap-1 border transition-all ${
+                                          isDarkMode 
+                                            ? 'text-indigo-300 bg-indigo-500/15 border-indigo-500/30 hover:bg-indigo-500/30' 
+                                            : 'text-indigo-700 bg-indigo-100 border-indigo-200 hover:bg-indigo-200'
+                                        }`}
+                                      >
+                                        <Focus size={10} /> Jump
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between text-[9px] font-sans pt-1 border-t border-slate-800/40">
+                                    <span className={`font-mono text-[9px] ${isDarkMode ? 'text-indigo-400/80' : 'text-indigo-600'}`}>
+                                      {cp.condition}
+                                    </span>
+                                    <span className={`truncate max-w-[160px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                                      {cp.notes}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
-                          <p className="text-[10px] text-slate-500 italic">No local extrema detected in [-20, 20]</p>
+                          <div className={`p-3 rounded-lg border text-center ${
+                            isDarkMode ? 'bg-[#0c0e1a] border-slate-800 text-slate-500' : 'bg-white border-slate-200 text-slate-500'
+                          }`}>
+                            <p className="text-[10px] italic">No critical points detected in domain [-20, 20] matching filter.</p>
+                          </div>
                         )}
                       </div>
 
